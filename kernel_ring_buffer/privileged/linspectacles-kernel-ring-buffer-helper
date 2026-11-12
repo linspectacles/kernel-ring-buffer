@@ -1,0 +1,117 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+# LinSpectacles Kernel Ring Buffer - privileged read-only /dev/kmsg collector
+# Copyright (C) 2026 brunonlinespace
+# GPL-3.0-or-later
+
+from __future__ import annotations
+
+import errno
+import json
+import os
+import sys
+
+HELPER_ID = "linspectacles-kernel-ring-buffer"
+HELPER_VERSION = "0.0.2"
+PROTOCOL = 1
+
+KMSG_PATH = "/dev/kmsg"
+KMSG_READ_SIZE = 4 * 1024 * 1024
+KMSG_MAX_RECORDS = 500_000
+
+
+def _kmsg_snapshot(_request):
+    fd = None
+    records = []
+    overrun_events = 0
+    try:
+        flags = os.O_RDONLY | os.O_NONBLOCK
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        fd = os.open(KMSG_PATH, flags)
+        os.lseek(fd, 0, os.SEEK_SET)
+
+        while len(records) < KMSG_MAX_RECORDS:
+            try:
+                payload = os.read(fd, KMSG_READ_SIZE)
+            except BlockingIOError:
+                break
+            except OSError as exc:
+                if exc.errno == errno.EPIPE:
+                    overrun_events += 1
+                    continue
+                raise
+            if not payload:
+                break
+            records.append(payload.decode("utf-8", errors="replace"))
+
+        return {
+            "ok": True,
+            "records": records,
+            "overrun_events": overrun_events,
+            "truncated": len(records) >= KMSG_MAX_RECORDS,
+        }
+    except PermissionError as exc:
+        return {"ok": False, "error": f"Permission denied reading {KMSG_PATH}: {exc}"}
+    except OSError as exc:
+        return {"ok": False, "error": f"Cannot read {KMSG_PATH}: {exc}"}
+    finally:
+        if fd is not None:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+OPS = {
+    "kmsg_snapshot": _kmsg_snapshot,
+}
+
+
+def main():
+    if sys.argv[1:] != ["--stdio"]:
+        print(
+            "This helper is only available through its fixed stdio protocol.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(json.dumps({
+        "status": "ready",
+        "protocol": PROTOCOL,
+        "helper_id": HELPER_ID,
+        "helper_version": HELPER_VERSION,
+    }), flush=True)
+
+    for line in sys.stdin:
+        try:
+            request = json.loads(line)
+        except json.JSONDecodeError:
+            print(json.dumps({"ok": False, "error": "Invalid JSON request."}), flush=True)
+            continue
+
+        op = str(request.get("op") or "")
+        if op == "quit":
+            print(json.dumps({"ok": True, "status": "bye"}), flush=True)
+            return 0
+
+        handler = OPS.get(op)
+        if handler is None:
+            print(json.dumps({"ok": False, "error": "Unsupported fixed operation."}), flush=True)
+            continue
+
+        try:
+            response = handler(request)
+        except Exception as exc:
+            response = {"ok": False, "error": f"Fixed operation failed: {exc}"}
+
+        print(
+            json.dumps(response, ensure_ascii=False, separators=(",", ":")),
+            flush=True,
+        )
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

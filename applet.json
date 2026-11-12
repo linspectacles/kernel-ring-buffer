@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "linspectacles-kernel-ring-buffer",
+  "name": "Kernel Ring Buffer",
+  "version": "0.0.6",
+  "author": "brunonlinespace",
+  "editor": "brunonlinespace",
+  "publisher": "brunonlinespace",
+  "order": 12,
+  "entrypoint": "kernel_ring_buffer/applet.py",
+  "factory": "create_applet",
+  "standalone": "standalone.py",
+  "description": "Read-only inspector for the current Linux kernel printk ring buffer, reading /dev/kmsg directly to preserve native record headers, sequence numbers, monotonic timestamps, priorities, facilities, flags, optional caller metadata, machine-readable continuation tags, message text and raw records.",
+  "platforms": [
+    "linux"
+  ],
+  "read_only": true,
+  "privileged_helper": {
+    "schema": 1,
+    "id": "linspectacles-kernel-ring-buffer",
+    "name": "Kernel Ring Buffer Privileged Helper",
+    "version": "0.0.2",
+    "protocol": 1,
+    "publisher": "brunonlinespace",
+    "payload": "kernel_ring_buffer/privileged/linspectacles-kernel-ring-buffer-helper",
+    "install_path": "/usr/libexec/linspectacles-kernel-ring-buffer-helper",
+    "sha256": "2134d1e0b1b79fd1a848250f8e1a9806083b08c4085244aeeb90922d610ae002",
+    "session_model": "in_place_ephemeral",
+    "read_only": true,
+    "capabilities": [
+      {
+        "id": "kernel_ring_buffer",
+        "label": "Kernel ring buffer",
+        "standard": "Reads the current printk ring buffer directly through /dev/kmsg when ordinary access is permitted.",
+        "elevated": "Reads the same fixed /dev/kmsg interface through the verified root-owned helper while in-place privileged access is active.",
+        "kind": "expanded"
+      }
+    ]
+  },
+  "organization_id": "linspectacles",
+  "organization_url": "https://github.com/linspectacles/",
+  "repository": "https://github.com/linspectacles/kernel-ring-buffer"
+}
